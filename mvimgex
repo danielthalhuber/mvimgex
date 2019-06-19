@@ -1,0 +1,98 @@
+#!/bin/bash
+
+##
+# Program: mvimgex
+# Version: 1.0.0
+# Created: 2019-06-19
+# Updated: 2019-06-19
+# License: GPL
+# Contact: Daniel Thalhuber
+##
+
+# dependency_check based on code from https://stackoverflow.com/a/677212
+dependency_check() {
+  command -v "$1" >/dev/null 2>&1 ||
+  { echo >&2 "$1 is required but it's not installed. Aborting."; exit 1; }
+}
+
+# file_size based on GPL code from:
+# https://github.com/SixArm/sixarm_unix_shell_scripts
+file_size() {
+  file="$1"
+  size=$(
+    (
+      du --apparent-size --block-size=1 "$file" 2>/dev/null ||
+      gdu --apparent-size --block-size=1 "$file" 2>/dev/null ||
+      find "$file" -printf "%s" 2>/dev/null ||
+      gfind "$file" -printf "%s" 2>/dev/null ||
+      stat --printf="%s" "$file" 2>/dev/null ||
+      stat -f%z "$file" 2>/dev/null ||
+      wc -c <"$file" 2>/dev/null
+    ) \
+    | awk '{print $1}'
+  )
+  echo "$size"
+}
+
+# extract component mp4 and jpg files from MVIMG_*.jpg file
+extract_component_files() {
+  # get directory and file name components
+  mvimg_file="$1"
+  mvimg_file_name="${mvimg_file##*/}"
+  mvimg_file_dir="${mvimg_file%/*}"
+
+  # append a slash to, or delete directory as necessary
+  if [[ -d "$mvimg_file_dir" ]] && [[ $mvimg_file_dir != */ ]]; then
+    mvimg_file_dir="$mvimg_file_dir/"
+  else
+    mvimg_file_dir=""
+  fi
+
+  # calculate file sizes/offsets (note: video offset is measured from EOF)
+  video_offset=$(
+    exiftool "$mvimg_file_name" |
+    grep "Micro Video Offset" |
+    awk '{print $5}'
+  )
+  mvimg_file_size=$(file_size "$mvimg_file_name")
+  photo_size=$((mvimg_file_size-video_offset))
+
+  # create names for the new files
+  timestamp="${mvimg_file_name##MVIMG_}"
+  timestamp="${timestamp%.jpg}"
+  video_name="$mvimg_file_dir$timestamp.mp4"
+  photo_name="$mvimg_file_dir$timestamp.jpg"
+
+  # create the new files
+  printf "%s\n\nprocessing $mvimg_file:%s\n"
+
+  printf "%s\nextracting video to new file $video_name:%s\n"
+  dd if="$1" of="$video_name" bs="$photo_size" skip=1
+
+  printf "%s\nextracting photo to new file $photo_name:%s\n"
+  dd if="$1" of="$photo_name" bs="$photo_size" skip=0 count=1
+}
+
+# check dependencies and argument 
+dependencies=( "exiftool" "dd" )
+for dependency in "${dependencies[@]}"; do
+  dependency_check "$dependency"
+done
+
+if [ "$#" -ne 1 ]; then
+    echo "Error: missing required parameter: single file or directory"
+    exit 1
+fi
+
+# extract component files from single file or directory
+if [ -f "$1" ] && { [[ $1 == */MVIMG_*.jpg ]] || [[ $1 == MVIMG_*.jpg ]]; }; then
+  extract_component_files "$1"
+elif [ -d "$1" ]; then
+  for file in "${1%*/}"/MVIMG_*.jpg; do
+    extract_component_files "$file"
+  done
+else
+  echo "Error: "\
+    "required parameter must be single MVIMG_*.jpg file " \
+    "or directory containing MVIMG_*.jpg files"
+fi
