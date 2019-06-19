@@ -74,7 +74,7 @@ extract_component_files() {
 }
 
 # check dependencies and argument 
-dependencies=( "exiftool" "dd" )
+dependencies=( "exiftool" "dd" "awk")
 for dependency in "${dependencies[@]}"; do
   dependency_check "$dependency"
 done
