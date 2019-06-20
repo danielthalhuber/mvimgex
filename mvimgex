@@ -60,7 +60,7 @@ extract_component_files() {
   # validate photo size
   # Google Photos may remove video without updating EXIF data
   # if this happens, do nothing and exit with nonzero value
-  if [ $photo_size -lt 1 ]; then
+  if [[ $photo_size -lt 1 ]]; then
     echo "Error:"\
       "file matches MVIMG_*.jpg pattern but contains no video."\
       "Aborting extraction."
@@ -81,15 +81,24 @@ extract_component_files() {
 
   printf "%s\nextracting photo to new file $photo_name:%s\n"
   dd if="$1" of="$photo_name" bs="$photo_size" skip=0 count=1
+
+  # validate new files
+  if [[ $(file "$video_name") != *" MP4 "* ]]; then
+    echo "Error:"\
+      "file matches MVIMG_*.jpg pattern but contains no video."\
+      "Removing newly extracted files."
+    rm "$photo_name" "$video_name"
+    return 1
+  fi
 }
 
 # check dependencies and argument 
-dependencies=( "exiftool" "dd" "awk")
+dependencies=( "exiftool" "dd" "awk" "file" )
 for dependency in "${dependencies[@]}"; do
   dependency_check "$dependency"
 done
 
-if [ "$#" -ne 1 ]; then
+if [[ "$#" -ne 1 ]]; then
     echo "Error: missing required parameter: single file or directory"
     exit 1
 fi
@@ -103,7 +112,8 @@ error_handler() {
   fi
 }
 
-if [ -f "$1" ] && { [[ $1 == */MVIMG_*.jpg ]] || [[ $1 == MVIMG_*.jpg ]]; }; then
+if [[ -f "$1" ]] &&
+  { [[ $1 == */MVIMG_*.jpg ]] || [[ $1 == MVIMG_*.jpg ]]; }; then
   input_file_count=1
   extract_component_files "$1"
   error_handler $? "$1"
@@ -129,8 +139,11 @@ printf "\n%${justify}s received" "$input_file_count"
 printf "\n%${justify}s processed sucessfully" "$success_count"
 printf "\n%${justify}s aborted" "$error_count"
 
-printf "\n\n MVIMG files aborted due to errors:\n"
-for error_file in "${error_files[@]}"; do
-  printf "\n  %s$error_file"
-done
+if [[ ${#error_files[@]} -gt 0 ]]; then
+  printf "\n\n MVIMG files aborted due to errors:\n"
+  for error_file in "${error_files[@]}"; do
+    printf "\n  %s$error_file"
+  done
+fi
+
 printf "\n \n"
