@@ -57,6 +57,16 @@ extract_component_files() {
   mvimg_file_size=$(file_size "$mvimg_file_name")
   photo_size=$((mvimg_file_size-video_offset))
 
+  # validate photo size
+  # Google Photos may remove video without updating EXIF data
+  # if this happens, do nothing and exit with nonzero value
+  if [ $photo_size -lt 1 ]; then
+    echo "Error:"\
+      "file matches MVIMG_*.jpg pattern but contains no video."\
+      "Aborting extraction."
+    return 1
+  fi
+
   # create names for the new files
   timestamp="${mvimg_file_name##MVIMG_}"
   timestamp="${timestamp%.jpg}"
@@ -84,15 +94,50 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-# extract component files from single file or directory
+# extract component files from single file or directory, count operations
+input_file_count=0
+exit_code=0
+error_files=()
+
 if [ -f "$1" ] && { [[ $1 == */MVIMG_*.jpg ]] || [[ $1 == MVIMG_*.jpg ]]; }; then
+  input_file_count=1
   extract_component_files "$1"
+
+  # count operation success
+  exit_code=$?
+  if [ $exit_code != 0 ]; then
+    error_files+=("$1")
+  fi
 elif [ -d "$1" ]; then
   for file in "${1%*/}"/MVIMG_*.jpg; do
+    input_file_count=$((input_file_count + 1))
     extract_component_files "$file"
+
+    # count operation success
+    exit_code=$?
+    if [ $exit_code != 0 ]; then
+      error_files+=("$file")
+    fi
   done
 else
+  input_file_count=1
   echo "Error: "\
-    "required parameter must be single MVIMG_*.jpg file " \
+    "required parameter must be single MVIMG_*.jpg file "\
     "or directory containing MVIMG_*.jpg files"
 fi
+
+# report results:
+error_count=${#error_files[@]}
+success_count=$((input_file_count - error_count))
+justify=$((2 + ${#input_file_count}))
+
+printf "\n\n MVIMG files processed:\n"
+printf "\n%${justify}s received" "$input_file_count"
+printf "\n%${justify}s processed sucessfully" "$success_count"
+printf "\n%${justify}s aborted" "$error_count"
+
+printf "\n\n MVIMG files aborted due to errors:\n"
+for error_file in "${error_files[@]}"; do
+  printf "\n  %s$error_file"
+done
+printf "\n \n"
