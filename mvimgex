@@ -94,36 +94,29 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-# extract component files from single file or directory, count operations
+# extract component files from single file or directory, record errors
 input_file_count=0
-exit_code=0
 error_files=()
+error_handler() {
+  if [ $1 != 0 ]; then
+    error_files+=("$2")
+  fi
+}
 
 if [ -f "$1" ] && { [[ $1 == */MVIMG_*.jpg ]] || [[ $1 == MVIMG_*.jpg ]]; }; then
   input_file_count=1
   extract_component_files "$1"
-
-  # count operation success
-  exit_code=$?
-  if [ $exit_code != 0 ]; then
-    error_files+=("$1")
-  fi
+  error_handler $? "$1"
 elif [ -d "$1" ]; then
   for file in "${1%*/}"/MVIMG_*.jpg; do
     input_file_count=$((input_file_count + 1))
     extract_component_files "$file"
-
-    # count operation success
-    exit_code=$?
-    if [ $exit_code != 0 ]; then
-      error_files+=("$file")
-    fi
+    error_handler $? "$file"
   done
 else
   input_file_count=1
-  echo "Error: "\
-    "required parameter must be single MVIMG_*.jpg file "\
-    "or directory containing MVIMG_*.jpg files"
+  printf "\nError: required parameter must be single MVIMG_*.jpg file or directory containing MVIMG_*.jpg files\n\n"
+  exit 1
 fi
 
 # report results:
